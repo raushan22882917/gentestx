@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GenTestX</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            padding: 0 20px;
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+        }
+        
+        h1 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+            color: var(--vscode-editor-foreground);
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .status.idle {
+            background-color: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
+        }
+        
+        .status.analyzing {
+            background-color: var(--vscode-progressBar-background);
+            color: var(--vscode-editor-foreground);
+        }
+        
+        .status.success {
+            background-color: var(--vscode-testing-iconPassed);
+            color: var(--vscode-editor-foreground);
+        }
+        
+        .status.error {
+            background-color: var(--vscode-testing-iconFailed);
+            color: var(--vscode-editor-foreground);
+        }
+        
+        .progress-container {
+            width: 100%;
+            height: 20px;
+            background-color: var(--vscode-input-background);
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background-color: var(--vscode-progressBar-background);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .section {
+            margin-bottom: 20px;
+        }
+        
+        .section-title {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: var(--vscode-editor-foreground);
+        }
+        
+        .code-block {
+            background-color: var(--vscode-textCodeBlock-background);
+            border-radius: 5px;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        
+        .test-case {
+            background-color: var(--vscode-input-background);
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .test-case-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .test-case-details {
+            margin-left: 10px;
+        }
+        
+        .button {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 8px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .button:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+        
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .file-info {
+            margin-bottom: 15px;
+            font-style: italic;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">GenTestX</div>
+            <button id="generateButton" class="button">Generate Tests</button>
+        </div>
+        
+        <div class="card">
+            <div id="statusContainer" class="status idle">
+                Ready to generate tests
+            </div>
+            
+            <div id="progressContainer" class="progress-container hidden">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
+            
+            <div id="fileInfo" class="file-info hidden">
+                Analyzing: <span id="fileName"></span>
+            </div>
+        </div>
+        
+        <div id="analysisSection" class="section hidden">
+            <div class="section-title">Code Analysis</div>
+            <div id="analysisContent" class="card"></div>
+        </div>
+        
+        <div id="testCasesSection" class="section hidden">
+            <div class="section-title">Generated Test Cases</div>
+            <div id="testCasesContent" class="card"></div>
+        </div>
+        
+        <div id="testCodeSection" class="section hidden">
+            <div class="section-title">Generated Test Code</div>
+            <div class="card">
+                <pre id="testCodeContent" class="code-block"></pre>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        (function() {
+            // Get VS Code API
+            const vscode = acquireVsCodeApi();
+            
+            // Elements
+            const generateButton = document.getElementById('generateButton');
+            const statusContainer = document.getElementById('statusContainer');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            const analysisSection = document.getElementById('analysisSection');
+            const analysisContent = document.getElementById('analysisContent');
+            const testCasesSection = document.getElementById('testCasesSection');
+            const testCasesContent = document.getElementById('testCasesContent');
+            const testCodeSection = document.getElementById('testCodeSection');
+            const testCodeContent = document.getElementById('testCodeContent');
+            
+            // State
+            let state = {
+                status: 'idle',
+                progress: 0,
+                file: null,
+                analysis: null,
+                testCases: [],
+                testCode: null
+            };
+            
+            // Try to get state from storage
+            const previousState = vscode.getState();
+            if (previousState) {
+                state = previousState;
+                updateUI();
+            }
+            
+            // Event listeners
+            generateButton.addEventListener('click', () => {
+                vscode.postMessage({
+                    command: 'generateTests'
+                });
+            });
+            
+            // Handle messages from the extension
+            window.addEventListener('message', event => {
+                const message = event.data;
+                
+                switch (message.command) {
+                    case 'updateStatus':
+                        state.status = message.status;
+                        state.progress = message.progress || 0;
+                        break;
+                        
+                    case 'updateFile':
+                        state.file = message.file;
+                        break;
+                        
+                    case 'updateAnalysis':
+                        state.analysis = message.analysis;
+                        break;
+                        
+                    case 'updateTestCases':
+                        state.testCases = message.testCases;
+                        break;
+                        
+                    case 'updateTestCode':
+                        state.testCode = message.testCode;
+                        break;
+                        
+                    case 'reset':
+                        state = {
+                            status: 'idle',
+                            progress: 0,
+                            file: null,
+                            analysis: null,
+                            testCases: [],
+                            testCode: null
+                        };
+                        break;
+                }
+                
+                // Update UI and save state
+                updateUI();
+                vscode.setState(state);
+            });
+            
+            // Update UI based on state
+            function updateUI() {
+                // Update status
+                statusContainer.className = `status ${state.status}`;
+                
+                switch (state.status) {
+                    case 'idle':
+                        statusContainer.textContent = 'Ready to generate tests';
+                        generateButton.disabled = false;
+                        progressContainer.classList.add('hidden');
+                        break;
+                        
+                    case 'analyzing':
+                        statusContainer.textContent = 'Analyzing code...';
+                        generateButton.disabled = true;
+                        progressContainer.classList.remove('hidden');
+                        progressBar.style.width = `${state.progress}%`;
+                        break;
+                        
+                    case 'generating':
+                        statusContainer.textContent = 'Generating tests...';
+                        generateButton.disabled = true;
+                        progressContainer.classList.remove('hidden');
+                        progressBar.style.width = `${state.progress}%`;
+                        break;
+                        
+                    case 'success':
+                        statusContainer.textContent = 'Tests generated successfully!';
+                        generateButton.disabled = false;
+                        progressContainer.classList.add('hidden');
+                        break;
+                        
+                    case 'error':
+                        statusContainer.textContent = 'Error generating tests';
+                        generateButton.disabled = false;
+                        progressContainer.classList.add('hidden');
+                        break;
+                }
+                
+                // Update file info
+                if (state.file) {
+                    fileInfo.classList.remove('hidden');
+                    fileName.textContent = state.file;
+                } else {
+                    fileInfo.classList.add('hidden');
+                }
+                
+                // Update analysis
+                if (state.analysis) {
+                    analysisSection.classList.remove('hidden');
+                    analysisContent.innerHTML = formatAnalysis(state.analysis);
+                } else {
+                    analysisSection.classList.add('hidden');
+                }
+                
+                // Update test cases
+                if (state.testCases && state.testCases.length > 0) {
+                    testCasesSection.classList.remove('hidden');
+                    testCasesContent.innerHTML = formatTestCases(state.testCases);
+                } else {
+                    testCasesSection.classList.add('hidden');
+                }
+                
+                // Update test code
+                if (state.testCode) {
+                    testCodeSection.classList.remove('hidden');
+                    testCodeContent.textContent = state.testCode;
+                } else {
+                    testCodeSection.classList.add('hidden');
+                }
+            }
+            
+            // Format analysis for display
+            function formatAnalysis(analysis) {
+                // Simple formatting - convert newlines to <br> and preserve whitespace
+                return analysis.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;');
+            }
+            
+            // Format test cases for display
+            function formatTestCases(testCases) {
+                if (!testCases || testCases.length === 0) {
+                    return '<p>No test cases found</p>';
+                }
+                
+                let html = '';
+                
+                testCases.forEach((testCase, index) => {
+                    html += `
+                        <div class="test-case">
+                            <div class="test-case-header">Test Case ${index + 1}: ${testCase.description || 'Unnamed Test'}</div>
+                            <div class="test-case-details">
+                                <div><strong>Function:</strong> ${testCase.functionToTest || 'N/A'}</div>
+                                <div><strong>Inputs:</strong> ${formatValue(testCase.inputs)}</div>
+                                <div><strong>Expected Output:</strong> ${formatValue(testCase.expectedOutput)}</div>
+                                <div><strong>Scenario:</strong> ${testCase.scenario || 'Normal'}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                return html;
+            }
+            
+            // Format values for display
+            function formatValue(value) {
+                if (value === undefined || value === null) {
+                    return 'N/A';
+                }
+                
+                if (typeof value === 'object') {
+                    return JSON.stringify(value);
+                }
+                
+                return value.toString();
+            }
+        })();
+    </script>
+</body>
+</html>
